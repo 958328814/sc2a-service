@@ -7,9 +7,14 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+var idFormat = "20060102T150405Z0700"
+var publishMutex sync.RWMutex
 
 // Release represents a published version
 type Release struct {
@@ -30,7 +35,7 @@ func init() {
 }
 
 func openReleaseFile() (string, *os.File, error) {
-	ts := time.Now().Format("20060102T150405Z0700")
+	ts := time.Now().Format(idFormat)
 	tc := 0
 	for {
 		var name string
@@ -40,7 +45,7 @@ func openReleaseFile() (string, *os.File, error) {
 			name = fmt.Sprintf("%s_%d", ts, tc)
 		}
 
-		f, err := os.OpenFile(name+".json", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0400)
+		f, err := os.OpenFile(dataFilePath(name+".json"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0400)
 		if err != nil {
 			if os.IsExist(err) {
 				tc = tc + 1
@@ -52,8 +57,15 @@ func openReleaseFile() (string, *os.File, error) {
 	}
 }
 
+func dataFilePath(name string) string {
+	return DataDir + "/" + name
+}
+
 // List list all releases
 func List() ([]Release, error) {
+	publishMutex.RLock()
+	defer publishMutex.RUnlock()
+
 	files, err := ioutil.ReadDir(DataDir)
 	if err != nil {
 		return nil, err
@@ -63,7 +75,7 @@ func List() ([]Release, error) {
 
 	for _, file := range files {
 		if filepath.Ext(file.Name()) == ".json" {
-			f, err := os.Open(file.Name())
+			f, err := os.Open(dataFilePath(file.Name()))
 			if err != nil {
 				return nil, err
 			}
@@ -81,6 +93,9 @@ func List() ([]Release, error) {
 
 // Publish uploads & publishes a new version
 func Publish(release Release, r io.Reader) (*Release, error) {
+	publishMutex.Lock()
+	defer publishMutex.Unlock()
+
 	id, f, err := openReleaseFile()
 	if err != nil {
 		return nil, err
@@ -94,7 +109,7 @@ func Publish(release Release, r io.Reader) (*Release, error) {
 		Date:        time.Now(),
 	}
 
-	dataf, err := os.OpenFile(DataDir+"/"+id+".dat", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 400)
+	dataf, err := os.OpenFile(dataFilePath(id+".dat"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 400)
 	if err != nil {
 		os.RemoveAll(f.Name())
 		return nil, err
@@ -115,7 +130,93 @@ func Publish(release Release, r io.Reader) (*Release, error) {
 	return saved, nil
 }
 
+func checkID(id string) error {
+	if id == "" {
+		return fmt.Errorf("ID is required")
+	}
+
+	if len(id) != len(idFormat) {
+		return fmt.Errorf("%v is not a valid ID", id)
+	}
+
+	base := path.Clean(DataDir)
+	p := path.Clean(dataFilePath(id))
+	if path.Dir(p) != base {
+		return fmt.Errorf("%v is not an illegal ID", id)
+	}
+	return nil
+}
+
 // Unpublish deletes a published version
 func Unpublish(id string) error {
+	if err := checkID(id); err != nil {
+		return err
+	}
+
+	publishMutex.Lock()
+	defer publishMutex.Unlock()
+
+	if err := os.RemoveAll(dataFilePath(id + ".dat")); err != nil {
+		return err
+	}
+
+	if err := os.RemoveAll(dataFilePath(id + ".json")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getDataReader(name string) (io.ReadCloser, error) {
+	p := dataFilePath(name)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// Get returns release metadata by id
+func Get(id string) (*Release, error) {
+	if err := checkID(id); err != nil {
+		return nil, err
+	}
+
+	publishMutex.RLock()
+	defer publishMutex.RUnlock()
+
+	f, err := getDataReader(id + ".json")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	r := Release{}
+	err = json.NewDecoder(f).Decode(&r)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// Stream streams release file data to a writer
+func Stream(id string, w io.Writer) error {
+	if err := checkID(id); err != nil {
+		return err
+	}
+
+	publishMutex.RLock()
+	defer publishMutex.RUnlock()
+
+	f, err := getDataReader(id + ".dat")
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = io.Copy(w, f)
+	if err != nil {
+		return err
+	}
 	return nil
 }
