@@ -24,4 +24,5 @@ _testmain.go
 *.prof
 
 data
+tmp
 config.json
