@@ -1,13 +1,9 @@
 package dist
 
 import (
-	"testing"
-
-	"reflect"
-
 	"bytes"
-
 	"sync"
+	"testing"
 
 	"github.com/boltdb/bolt"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +23,9 @@ func TestGetLink(t *testing.T) {
 	id := links[0].ID
 	link, err := GetLink(id)
 	assert.NoError(t, err)
-	assert.True(t, reflect.DeepEqual(link, &links[0]))
+	assert.Equal(t, link.ID, links[0].ID)
+	assert.Equal(t, link.ReleaseID, links[0].ReleaseID)
+	assert.Equal(t, link.SubID, links[0].SubID)
 }
 
 func TestStreamLink(t *testing.T) {

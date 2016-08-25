@@ -1,17 +1,24 @@
 package main
 
-import "github.com/gin-gonic/gin"
-import "encoding/json"
-import "os"
-import "log"
-import "github.com/DreamHacks/sc2a-service/dist"
-import "net/http"
-import "errors"
-import "text/template"
+import (
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"text/template"
+	"time"
+
+	"github.com/DreamHacks/sc2a-service/dist"
+	"github.com/gin-gonic/gin"
+	"github.com/itsjamie/gin-cors"
+	"gopkg.in/appleboy/gin-jwt.v2"
+)
 
 // Config is the app config
 type Config struct {
 	BaseURI  string
+	JWTKey   string
 	User     string
 	Password string
 	Dist     dist.Config
@@ -31,16 +38,8 @@ func init() {
 	}
 }
 
-func main() {
-	dist.Configure(config.BaseURI, config.Dist)
-	dist.OpenDB()
-	defer dist.CloseDB()
-
-	r := gin.Default()
-
-	api := r.Group("/api")
-
-	api.Use(func(c *gin.Context) {
+func useErrorHandler(g *gin.RouterGroup) {
+	g.Use(func(c *gin.Context) {
 		c.Next()
 		if len(c.Errors) > 0 {
 			if c.Writer.Status() == http.StatusOK {
@@ -50,10 +49,57 @@ func main() {
 			c.JSON(-1, gin.H{"message": errors[0].Error(), "errors": errors})
 		}
 	})
+}
 
-	authAccounts := gin.Accounts{}
-	authAccounts[config.User] = config.Password
-	api.Use(gin.BasicAuth(authAccounts))
+func useAuth(r *gin.Engine, g *gin.RouterGroup) {
+	authMiddleware := &jwt.GinJWTMiddleware{
+		Realm:      "auth required",
+		Key:        []byte(config.JWTKey),
+		Timeout:    time.Hour,
+		MaxRefresh: time.Hour * 24,
+		Authenticator: func(userId string, password string, c *gin.Context) (string, bool) {
+			if userId == config.User && password == config.Password {
+				return userId, true
+			}
+
+			return userId, false
+		},
+		Authorizator: func(userId string, c *gin.Context) bool {
+			return true
+		},
+		Unauthorized: func(c *gin.Context, code int, message string) {
+			c.JSON(code, gin.H{
+				"code":    code,
+				"message": message,
+			})
+		},
+	}
+	g.Use(authMiddleware.MiddlewareFunc())
+	g.GET("/token", authMiddleware.RefreshHandler)
+	r.POST("/login", authMiddleware.LoginHandler)
+}
+
+func main() {
+	dist.Configure(config.BaseURI, config.Dist)
+	dist.OpenDB()
+	defer dist.CloseDB()
+
+	r := gin.Default()
+
+	r.Use(cors.Middleware(cors.Config{
+		Origins:         "*",
+		Methods:         "GET, PUT, POST, DELETE",
+		RequestHeaders:  "Origin, Authorization, Content-Type",
+		ExposedHeaders:  "",
+		MaxAge:          50 * time.Second,
+		Credentials:     true,
+		ValidateHeaders: false,
+	}))
+
+	api := r.Group("/api")
+
+	useErrorHandler(api)
+	useAuth(r, api)
 
 	api.GET("/release", func(c *gin.Context) {
 		list, err := dist.List()

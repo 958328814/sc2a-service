@@ -8,11 +8,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"time"
 
-	"sort"
-
 	"github.com/boltdb/bolt"
+	"github.com/fluxxu/util"
 	"github.com/satori/go.uuid"
 )
 
@@ -21,7 +21,7 @@ type Release struct {
 	ID          string
 	Version     string
 	Description string
-	Date        time.Time
+	Date        util.JSONTime
 }
 
 // FileName generate file name of this release
@@ -33,7 +33,7 @@ func (r Release) FileName() string {
 	buf := bytes.NewBuffer(nil)
 	nameTemplate.Execute(buf, ctx{
 		Version: r.Version,
-		Date:    r.Date.Format("20060102150405"),
+		Date:    time.Time(r.Date).Format("20060102150405"),
 	})
 	return string(buf.Bytes())
 }
@@ -41,9 +41,11 @@ func (r Release) FileName() string {
 // ReleasesByDateDesc is slice of Release sorted by date desc
 type ReleasesByDateDesc []Release
 
-func (rl ReleasesByDateDesc) Len() int           { return len(rl) }
-func (rl ReleasesByDateDesc) Swap(i, j int)      { rl[i], rl[j] = rl[j], rl[i] }
-func (rl ReleasesByDateDesc) Less(i, j int) bool { return !rl[i].Date.Before(rl[j].Date) }
+func (rl ReleasesByDateDesc) Len() int      { return len(rl) }
+func (rl ReleasesByDateDesc) Swap(i, j int) { rl[i], rl[j] = rl[j], rl[i] }
+func (rl ReleasesByDateDesc) Less(i, j int) bool {
+	return !time.Time(rl[i].Date).Before(time.Time(rl[j].Date))
+}
 
 // DataDir is the path to store files
 const DataDir = "./data/release"
@@ -91,7 +93,7 @@ func Publish(release Release, r io.Reader) (rv *Release, err error) {
 		ID:          id,
 		Version:     release.Version,
 		Description: release.Description,
-		Date:        time.Now(),
+		Date:        util.JSONTime(time.Now()),
 	}
 
 	fpath := dataFilePath(id + ".dat")

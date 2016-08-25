@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
-	"strconv"
-
 	"github.com/boltdb/bolt"
+	"github.com/fluxxu/util"
 	"github.com/satori/go.uuid"
 )
 
@@ -19,7 +19,7 @@ type Link struct {
 	ID        string
 	SubID     string
 	ReleaseID string
-	Date      time.Time
+	Date      util.JSONTime
 }
 
 func createLinks(subs []string, releaseID string) (rv []Link, err error) {
@@ -32,7 +32,7 @@ func createLinks(subs []string, releaseID string) (rv []Link, err error) {
 				ID:        id,
 				SubID:     sub,
 				ReleaseID: releaseID,
-				Date:      now,
+				Date:      util.JSONTime(now),
 			}
 			rv = append(rv, link)
 			j, err := json.Marshal(link)

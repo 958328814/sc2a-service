@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/fluxxu/util"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestList(t *testing.T) {
 	now := time.Now()
 	testdata := []Release{
-		Release{Version: "0.01", Description: "D1", Date: now},
-		Release{Version: "0.02", Description: "D2", Date: now.Add(time.Second)},
-		Release{Version: "0.03", Description: "D3", Date: now.Add(time.Second * 2)},
+		Release{Version: "0.01", Description: "D1", Date: util.JSONTime(now)},
+		Release{Version: "0.02", Description: "D2", Date: util.JSONTime(now.Add(time.Second))},
+		Release{Version: "0.03", Description: "D3", Date: util.JSONTime(now.Add(time.Second * 2))},
 	}
 
 	err := db.Update(func(t *bolt.Tx) error {
@@ -47,6 +48,8 @@ func TestList(t *testing.T) {
 
 	assert.Equal(t, len(testdata), len(rl))
 	for i := range testdata {
+		assert.True(t, testdata[i].Date.Equal(rl[i].Date))
+		testdata[i].Date = rl[i].Date
 		assert.True(t, reflect.DeepEqual(testdata[i], rl[i]))
 	}
 }
@@ -128,6 +131,8 @@ func TestGet(t *testing.T) {
 
 	fromJSON, err := Get(r.ID)
 	assert.NoError(t, err)
+	assert.True(t, fromJSON.Date.Equal(r.Date))
+	fromJSON.Date = r.Date
 	assert.True(t, reflect.DeepEqual(fromJSON, r))
 	assert.NoError(t, Unpublish(r.ID))
 }

@@ -10,15 +10,13 @@ import (
 type notifyEmailContext struct {
 	Release Release
 	Date    string
-	Link    string
 }
 
 // NotifyAll sends email notification to all subscribers
 func NotifyAll(release Release) error {
 	ctx := notifyEmailContext{
 		Release: release,
-		Date:    release.Date.Format("20060102150405"),
-		Link:    "",
+		Date:    release.Date.Time().Format("20060102150405"),
 	}
 
 	subIds := []string{}
@@ -38,34 +36,39 @@ func NotifyAll(release Release) error {
 		return fmt.Errorf("notify: create links: %s", err.Error())
 	}
 
+	m, err := getNotifyMessage(ctx)
+	if err != nil {
+		return fmt.Errorf("notify: create message: %s", err.Error())
+	}
 	for _, link := range links {
-		ctx.Link = makeLink(link.ID)
-		err := sendNotifyEmail(ctx, subIDMap[link.SubID].Email)
-		if err != nil {
-			return fmt.Errorf("notify: send to %s: %s", link.SubID, err.Error())
-		}
+		m.AddRecipientAndVariables(subIDMap[link.SubID].Email, map[string]interface{}{
+			"Link": makeLink(link.ID),
+		})
+	}
+
+	_, _, err = mg.Send(m)
+	if err != nil {
+		return fmt.Errorf("notify: send: %s", err.Error())
 	}
 
 	return nil
 }
 
-func sendNotifyEmail(ctx notifyEmailContext, email string) error {
+func getNotifyMessage(ctx notifyEmailContext) (*mailgun.Message, error) {
 	buf := bytes.NewBuffer(nil)
 	var subject, content string
 	err := notifyEmailSubjectTemplate.Execute(buf, ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	subject = string(buf.Bytes())
 	buf.Reset()
 	err = notifyEmailContentTemplate.Execute(buf, ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	content = string(buf.Bytes())
-	m := mailgun.NewMessage("notify@dreamdota.com", subject, content, email)
-	_, _, err = mg.Send(m)
-	return err
+	return mailgun.NewMessage("DreamHacks <notify@dreamdota.com>", subject, content), nil
 }
 
 // NotifySubscriber sends email to a subscriber
