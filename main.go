@@ -9,7 +9,10 @@ import (
 	"text/template"
 	"time"
 
+	"sync"
+
 	"github.com/DreamHacks/sc2a-service/dist"
+	assets "github.com/DreamHacks/sc2a-service/ui"
 	"github.com/gin-gonic/gin"
 	"github.com/itsjamie/gin-cors"
 	"gopkg.in/appleboy/gin-jwt.v2"
@@ -24,11 +27,13 @@ type Config struct {
 	Dist     dist.Config
 }
 
+var configLock sync.RWMutex
+
 var config Config
 var nameTemplate *template.Template
 
 func init() {
-	f, err := os.Open("./config.json")
+	f, err := os.Open("./data/config.json")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -231,6 +236,8 @@ func main() {
 		c.JSON(http.StatusOK, stats)
 	})
 
+	r.StaticFS("/ui", assets.FS)
+
 	r.GET("/download/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		link, err := dist.GetLink(id)
@@ -255,6 +262,10 @@ func main() {
 			c.String(http.StatusInternalServerError, err.Error())
 			return
 		}
+	})
+
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusTemporaryRedirect, "/ui")
 	})
 
 	r.Run()

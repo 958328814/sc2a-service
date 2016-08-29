@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sc2a
+  labels:
+    name: sc2a
+spec:
+  containers:
+    - image: gcr.io/b2dev-1296/sc2a
+      env:
+        - name: GIN_MODE
+          value: release
+      name: sc2a
+      ports:
+        - containerPort: 8080
+          name: sc2a
+      volumeMounts:
+        - name: sc2a-persistent-storage
+          mountPath: /root/data
+  volumes:
+    - name: sc2a-persistent-storage
+      gcePersistentDisk:
+        pdName: sc2a-disk
+        fsType: ext4
